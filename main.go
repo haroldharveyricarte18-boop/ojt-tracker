@@ -30,6 +30,9 @@ type DashboardData struct {
 	RenderedHours  float64
 	RemainingHours float64
 	Logs           []Log
+	CurrentPage    int
+	NextPage       int
+	PrevPage       int
 }
 
 var db *sql.DB
@@ -117,6 +120,14 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	uParam := r.URL.Query().Get("u")
 	userID, _ := strconv.Atoi(uParam)
 
+	// 1. Get current page from URL (?p=1), default to 1
+	pParam := r.URL.Query().Get("p")
+	currentPage, _ := strconv.Atoi(pParam)
+	if currentPage < 1 {
+		currentPage = 1
+	}
+	offset := (currentPage - 1) * 10
+
 	// Fetch all users to find the first valid ID if none provided
 	rowsU, err := db.Query("SELECT id, name, target FROM users ORDER BY id ASC")
 	if err != nil {
@@ -144,8 +155,23 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		userID = activeUser.ID
 	}
 
-	// Fetch logs for the specific active user (Postgres uses $1)
-	rowsL, err := db.Query("SELECT id, date, hours FROM logs WHERE user_id = $1 ORDER BY date DESC", userID)
+	// 2. Fetch logs for calculation (Total Hours rendered) - No Limit
+	rowsTotal, err := db.Query("SELECT hours FROM logs WHERE user_id = $1", userID)
+	if err != nil {
+		http.Error(w, "Total calculation error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rowsTotal.Close()
+
+	var totalRendered float64
+	for rowsTotal.Next() {
+		var h float64
+		rowsTotal.Scan(&h)
+		totalRendered += h
+	}
+
+	// 3. Fetch ONLY 10 logs for the current page display
+	rowsL, err := db.Query("SELECT id, date, hours FROM logs WHERE user_id = $1 ORDER BY date DESC LIMIT 10 OFFSET $2", userID, offset)
 	if err != nil {
 		http.Error(w, "Query error: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -153,14 +179,12 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	defer rowsL.Close()
 
 	var logs []Log
-	var totalRendered float64
 	for rowsL.Next() {
 		var l Log
 		if err := rowsL.Scan(&l.ID, &l.Date, &l.Hours); err != nil {
 			continue
 		}
 		logs = append(logs, l)
-		totalRendered += l.Hours
 	}
 
 	data := DashboardData{
@@ -169,6 +193,9 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		RenderedHours:  totalRendered,
 		RemainingHours: activeUser.TargetHours - totalRendered,
 		Logs:           logs,
+		CurrentPage:    currentPage,
+		NextPage:       currentPage + 1,
+		PrevPage:       currentPage - 1,
 	}
 
 	tmpl, err := template.ParseFiles("index.html")

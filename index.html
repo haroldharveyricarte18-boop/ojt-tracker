@@ -144,45 +144,65 @@
             </div>
 
             <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="p-6 border-b border-gray-50">
-                    <h2 class="text-lg font-bold">Log History</h2>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="p-4 text-xs font-bold text-gray-400 uppercase">Date</th>
-                                <th class="p-4 text-xs font-bold text-gray-400 uppercase text-right">Hours</th>
-                                <th class="p-4 text-xs font-bold text-gray-400 uppercase text-center">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100 text-sm">
-                            {{range .Logs}}
-                            <tr class="hover:bg-blue-50/30 transition">
-                                <td class="p-4 font-bold text-gray-700 whitespace-nowrap">{{.Date}}</td>
-                                <td class="p-4 text-right font-black text-blue-700">{{.Hours}} hrs</td>
-                                <td class="p-4 text-center">
-                                    <a href="/delete?id={{.ID}}&u={{$.ActiveUser.ID}}" 
-                                       onclick="return confirm('Delete this record?')"
-                                       class="text-red-400 hover:text-red-600 font-bold">
-                                        Delete
-                                    </a>
-                                </td>
-                            </tr>
-                            {{else}}
-                            <tr>
-                                <td colspan="3" class="p-12 text-center text-gray-400">
-                                    No logs yet.
-                                </td>
-                            </tr>
-                            {{end}}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </main>
+    <div class="p-6 border-b border-gray-50">
+        <h2 class="text-lg font-bold">Log History</h2>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-left">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="p-4 text-xs font-bold text-gray-400 uppercase">Date</th>
+                    <th class="p-4 text-xs font-bold text-gray-400 uppercase text-right">Hours</th>
+                    <th class="p-4 text-xs font-bold text-gray-400 uppercase text-center">Action</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 text-sm">
+                {{range .Logs}}
+                <tr class="hover:bg-blue-50/30 transition">
+                    <td class="p-4 font-bold text-gray-700 whitespace-nowrap">{{.Date}}</td>
+                    <td class="p-4 text-right font-black text-blue-700">{{.Hours}} hrs</td>
+                    <td class="p-4 text-center">
+                        <a href="/delete?id={{.ID}}&u={{$.ActiveUser.ID}}" 
+                           onclick="return confirm('Delete this record?')"
+                           class="text-red-400 hover:text-red-600 font-bold">
+                            Delete
+                        </a>
+                    </td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="3" class="p-12 text-center text-gray-400">
+                        No logs yet.
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
 
+    <div class="p-4 border-t border-gray-50 flex justify-between items-center bg-gray-50/50">
+        <div class="text-xs font-bold text-gray-400 uppercase tracking-wider">
+            Page <strong>{{.CurrentPage}}</strong>
+        </div>
+        <div class="flex gap-2">
+            {{if gt .CurrentPage 1}}
+            <a href="/?u={{.ActiveUser.ID}}&p={{.PrevPage}}" 
+               class="px-4 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-100 transition-all">
+                Previous
+            </a>
+            {{end}}
+            
+            {{if ge (len .Logs) 10}}
+            <a href="/?u={{.ActiveUser.ID}}&p={{.NextPage}}" 
+               class="px-4 py-2 bg-blue-600 rounded-lg text-xs font-bold text-white hover:bg-blue-700 shadow-md shadow-blue-100 transition-all">
+                Next Page
+            </a>
+            {{end}}
+        </div>
+    </div>
+</div>
+
+    
     <script>
         const openBtn = document.getElementById('open-menu');
         const closeBtn = document.getElementById('close-menu');
