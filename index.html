@@ -90,32 +90,42 @@
                 </div>
             </header>
 
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-1">
-                    <span class="text-sm font-bold text-gray-600 uppercase tracking-tight">Completion Progress</span>
-                    <span class="text-sm font-bold text-blue-600">{{.RenderedHours}} / {{.ActiveUser.TargetHours}} Hours</span>
-                </div>
-                <div class="w-full bg-gray-100 rounded-full h-4 overflow-hidden">
-                    <div class="bg-blue-600 h-full progress-glow transition-all duration-1000" 
-                         style="width: calc(({{.RenderedHours}} / {{.ActiveUser.TargetHours}}) * 100%)">
-                    </div>
-                </div>
-            </div>
+           <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-1">
+        <span class="text-sm font-bold text-gray-600 uppercase tracking-tight">Completion Progress</span>
+        <span class="text-sm font-bold text-blue-600">
+            {{printf "%.1f" .RenderedHours}} / {{printf "%.0f" .ActiveUser.TargetHours}} Hours
+        </span>
+    </div>
+    <div class="w-full bg-gray-100 rounded-full h-4 overflow-hidden">
+        <div class="bg-blue-600 h-full progress-glow transition-all duration-1000" 
+             style="width: calc(({{.RenderedHours}} / {{.ActiveUser.TargetHours}}) * 100%)">
+        </div>
+    </div>
+</div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 mb-10">
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <p class="text-sm text-gray-400 uppercase font-bold tracking-wider">Goal</p>
-                    <p class="text-3xl font-black text-gray-800">{{.ActiveUser.TargetHours}}<span class="text-lg font-normal ml-1">hrs</span></p>
-                </div>
-                <div class="bg-blue-600 p-6 rounded-2xl shadow-lg border border-blue-700 text-white">
-                    <p class="text-sm uppercase font-bold tracking-wider opacity-80">Rendered</p>
-                    <p class="text-3xl font-black">{{.RenderedHours}}<span class="text-lg font-normal ml-1 opacity-80">hrs</span></p>
-                </div>
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <p class="text-sm text-gray-400 uppercase font-bold tracking-wider">Remaining</p>
-                    <p class="text-3xl font-black text-orange-500">{{.RemainingHours}}<span class="text-lg font-normal ml-1 text-gray-400">hrs</span></p>
-                </div>
-            </div>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 mb-10">
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <p class="text-sm text-gray-400 uppercase font-bold tracking-wider">Goal</p>
+        <p class="text-3xl font-black text-gray-800">
+            {{printf "%.0f" .ActiveUser.TargetHours}}<span class="text-lg font-normal ml-1">hrs</span>
+        </p>
+    </div>
+
+    <div class="bg-blue-600 p-6 rounded-2xl shadow-lg border border-blue-700 text-white">
+        <p class="text-sm uppercase font-bold tracking-wider opacity-80">Rendered</p>
+        <p class="text-3xl font-black">
+            {{printf "%.1f" .RenderedHours}}<span class="text-lg font-normal ml-1 opacity-80">hrs</span>
+        </p>
+    </div>
+
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <p class="text-sm text-gray-400 uppercase font-bold tracking-wider">Remaining</p>
+        <p class="text-3xl font-black text-orange-500">
+            {{printf "%.1f" .RemainingHours}}<span class="text-lg font-normal ml-1 text-gray-400">hrs</span>
+        </p>
+    </div>
+</div>
 
             <div class="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 mb-10">
                 <h2 class="text-lg font-bold mb-6 flex items-center text-gray-700">
