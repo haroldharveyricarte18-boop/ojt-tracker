@@ -43,6 +43,7 @@ type DashboardData struct {
 }
 
 var db *sql.DB
+var userHistories = make(map[string][]map[string]string)
 
 func migrateDatabase(db *sql.DB) {
 	// 1. Migrate Logs Table (Time In/Out)
@@ -130,18 +131,41 @@ func main() {
 	fmt.Println("Multi-User OJT Server starting at http://localhost:" + port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
-func aiChatHandler(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query().Get("msg")
-	// PASTE YOUR GROQ KEY HERE
-	apiKey := "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"
 
-	// Groq API uses a standard JSON structure
+func aiChatHandler(w http.ResponseWriter, r *http.Request) {
+	// Get message AND name from the frontend
+	query := r.URL.Query().Get("msg")
+	userName := r.URL.Query().Get("name")
+
+	// If no name is provided (e.g., direct URL access), use a default
+	if userName == "" {
+		userName = "Guest"
+	}
+
+	apiKey := os.Getenv("GROQ_API_KEY")
+
+	// 2. CHECK: If this is the first time this user is chatting,
+	// initialize their specific history with a system prompt.
+	if _, exists := userHistories[userName]; !exists {
+		userHistories[userName] = []map[string]string{
+			{
+				"role":    "system",
+				"content": "You are HarveyAI, a helpful assistant for an OJT tracker. You are currently talking to " + userName + ".",
+			},
+		}
+	}
+
+	// 3. RECORD: Add the user's current question to THEIR folder
+	userHistories[userName] = append(userHistories[userName], map[string]string{
+		"role":    "user",
+		"content": query,
+	})
+
+	// 4. REQUEST: Send the ENTIRE history of that specific user to Groq
+	// This is how the AI "remembers" what you said 2 minutes ago.
 	requestBody, _ := json.Marshal(map[string]interface{}{
-		"model": "llama-3.3-70b-versatile", // This is a very smart, fast "real" AI
-		"messages": []map[string]string{
-			{"role": "system", "content": "You are HarveyAI, a helpful assistant for an OJT tracker."},
-			{"role": "user", "content": query},
-		},
+		"model":    "llama-3.3-70b-versatile",
+		"messages": userHistories[userName],
 	})
 
 	req, _ := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer(requestBody))
@@ -167,10 +191,16 @@ func aiChatHandler(w http.ResponseWriter, r *http.Request) {
 
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	// Send the real AI answer back to your sidebar
+	// 5. RESPONSE: Get the answer and save it to that user's history folder
 	reply := "I'm sorry, I'm resting right now."
 	if len(result.Choices) > 0 {
 		reply = result.Choices[0].Message.Content
+
+		// Add the AI's reply to history so it's remembered next time
+		userHistories[userName] = append(userHistories[userName], map[string]string{
+			"role":    "assistant",
+			"content": reply,
+		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")

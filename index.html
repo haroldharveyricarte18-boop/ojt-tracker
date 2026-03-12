@@ -60,8 +60,9 @@ main {
         </div>
         <nav class="flex-grow p-4 space-y-2 overflow-y-auto">
             <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-2 mb-4">Select Member</p>
-            {{range .AllUsers}}
+           {{range .AllUsers}}
 <a href="/?u={{.ID}}" 
+   onclick="prepChat('{{.Name}}')"
    class="relative flex items-center p-3 transition-all group {{if eq .ID $.ActiveUser.ID}}bg-blue-50 text-blue-700 active-indicator{{else}}text-gray-500 hover:bg-gray-50 hover:text-blue-600{{end}}">
     
     <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black mr-3 transition-colors
@@ -360,10 +361,13 @@ main {
     </div>
 </div>
 
-<div id="aiSidebar" class="fixed top-0 right-0 h-full w-80 bg-white shadow-[-10px_0_30px_rgba(0,0,0,0.1)] z-[500] transform translate-x-full transition-transform duration-500 ease-in-out flex flex-col border-l border-gray-100">
+<div id="aiSidebar" class="fixed top-0 right-0 h-full w-80 bg-white shadow-[-10px_0_30px_rgba(0,0,0,0.1)] z-[9999] transform translate-x-full transition-transform duration-500 ease-in-out flex flex-col border-l border-gray-100 pointer-events-none">
+    
+    <input type="hidden" id="activeChatUser" value="{{.ActiveUser.Name}}">
+    <input type="hidden" id="activeChatHours" value="{{printf "%.0f" .RenderedHours}}">
     <div class="p-6 bg-blue-600 text-white flex justify-between items-center">
         <div>
-            <h3 class="font-black text-xl tracking-tight">HarveyAI</h3>
+            <h3 id="chatTitle" class="font-black text-xl tracking-tight">HarveyAI: {{.ActiveUser.Name}}</h3>
             <div class="flex gap-2 items-center mt-1">
                 <p class="text-[10px] opacity-80 uppercase font-bold tracking-widest">OJT Assistant</p>
                 <button onclick="clearChat()" class="text-[9px] bg-white/20 px-1.5 py-0.5 rounded hover:bg-white/40 transition">Clear Chat</button>
@@ -376,8 +380,8 @@ main {
     
     <div id="aiMessages" class="flex-grow p-4 overflow-y-auto space-y-4 bg-gray-50/50">
         <div class="bg-white border border-blue-100 p-4 rounded-2xl rounded-tl-none text-xs font-medium text-gray-700 shadow-sm leading-relaxed initial-msg">
-            Hello! I'm <strong>HarveyAI</strong>. I've analyzed your logs. You've rendered <strong>{{printf "%.0f" .RenderedHours}} hours</strong> so far. How can I help?
-        </div>
+    Hello <strong>{{.ActiveUser.Name}}</strong>! I'm <strong>HarveyAI</strong>. You've rendered <strong>{{printf "%.0f" .RenderedHours}} hours</strong>. How can I help?
+</div>
     </div>
 
     <div class="p-4 border-t border-gray-100 bg-white">
@@ -670,29 +674,46 @@ function executeRename(uID, newName) {
     finalForm.submit();
 }
 
-// 1. Function to Load Chat on Page Refresh
+// 1. Function to Load Chat on Page Refresh (Synced per User)
 document.addEventListener("DOMContentLoaded", function() {
-    const savedChat = localStorage.getItem('harvey_chat');
+    const userName = document.getElementById('activeChatUser').value;
     const msgContainer = document.getElementById('aiMessages');
     
-    if (savedChat) {
-        // We replace the container content with saved messages
-        msgContainer.innerHTML = savedChat;
-        // Always scroll to the bottom after loading
-        msgContainer.scrollTop = msgContainer.scrollHeight;
+    if (userName) {
+        // Load history specifically for the active user
+        const savedChat = localStorage.getItem('harvey_chat_' + userName);
+        if (savedChat) {
+            msgContainer.innerHTML = savedChat;
+            msgContainer.scrollTop = msgContainer.scrollHeight;
+        }
     }
 });
+
+// Function used by the Sidebar Links to change the active user context
+function prepChat(name) {
+    document.getElementById('activeChatUser').value = name;
+    // The page will reload due to the <a> tag, and DOMContentLoaded will handle the rest.
+}
 
 function toggleAI() {
     const sidebar = document.getElementById('aiSidebar');
     sidebar.classList.toggle('translate-x-full');
+
+    // FIX: Only allow clicking on the sidebar when it's visible
+    if (sidebar.classList.contains('translate-x-full')) {
+        sidebar.style.pointerEvents = 'none';
+    } else {
+        sidebar.style.pointerEvents = 'auto';
+    }
 }
 
-// 2. Function to Clear Chat History
+// 2. Function to Clear Chat History (Synced per User)
 function clearChat() {
-    if(confirm("Delete all chat history?")) {
-        localStorage.removeItem('harvey_chat');
-        // Refresh the page to reset the UI to the initial state
+    const userName = document.getElementById('activeChatUser').value;
+    if(!userName) return;
+
+    if(confirm(`Delete chat history for ${userName}?`)) {
+        localStorage.removeItem('harvey_chat_' + userName);
         location.reload();
     }
 }
@@ -701,7 +722,12 @@ async function askAI() {
     const input = document.getElementById('aiInput');
     const msgContainer = document.getElementById('aiMessages');
     const question = input.value.trim();
-    if (!question) return;
+    
+    // Get the dynamic user name and rendered hours
+    const userName = document.getElementById('activeChatUser').value;
+    const hours = document.getElementById('activeChatHours').value;
+
+    if (!question || !userName) return;
 
     // 1. Show User Message
     const userHtml = `<div class="flex justify-end"><div class="bg-blue-600 text-white p-3 rounded-2xl rounded-tr-none text-xs max-w-[80%] shadow-md">${question}</div></div>`;
@@ -715,8 +741,9 @@ async function askAI() {
     msgContainer.scrollTop = msgContainer.scrollHeight;
 
     try {
-        // 3. Talk to your Go Backend
-        const response = await fetch(`/ai-chat?msg=${encodeURIComponent(question)}`);
+        // 3. Talk to Go Backend - Passing 'name' and 'hours' for context
+        const url = `/ai-chat?msg=${encodeURIComponent(question)}&name=${encodeURIComponent(userName)}&hours=${hours}`;
+        const response = await fetch(url);
         const data = await response.json();
 
         // 4. Remove "Thinking" and show real answer
@@ -731,8 +758,8 @@ async function askAI() {
             </div>`;
         msgContainer.innerHTML += aiHtml;
 
-        // 5. SAVE TO LOCALSTORAGE (This is the key fix!)
-        localStorage.setItem('harvey_chat', msgContainer.innerHTML);
+        // 5. SAVE TO INDIVIDUAL LOCALSTORAGE (The Sync Fix!)
+        localStorage.setItem('harvey_chat_' + userName, msgContainer.innerHTML);
 
     } catch (error) {
         const typingElement = document.getElementById(typingId);
