@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -118,6 +120,7 @@ func main() {
 	http.HandleFunc("/save-notes", saveNotesHandler)
 	http.HandleFunc("/verify-note-pass", verifyNotePassHandler)
 	http.HandleFunc("/export", exportHandler)
+	http.HandleFunc("/ai-chat", aiChatHandler)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -126,6 +129,52 @@ func main() {
 
 	fmt.Println("Multi-User OJT Server starting at http://localhost:" + port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
+}
+func aiChatHandler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("msg")
+	// PASTE YOUR GROQ KEY HERE
+	apiKey := "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"
+
+	// Groq API uses a standard JSON structure
+	requestBody, _ := json.Marshal(map[string]interface{}{
+		"model": "llama-3.3-70b-versatile", // This is a very smart, fast "real" AI
+		"messages": []map[string]string{
+			{"role": "system", "content": "You are HarveyAI, a helpful assistant for an OJT tracker."},
+			{"role": "user", "content": query},
+		},
+	})
+
+	req, _ := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Groq Error:", err)
+		http.Error(w, "AI Error", 500)
+		return
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	// Send the real AI answer back to your sidebar
+	reply := "I'm sorry, I'm resting right now."
+	if len(result.Choices) > 0 {
+		reply = result.Choices[0].Message.Content
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"answer": reply})
 }
 
 func exportHandler(w http.ResponseWriter, r *http.Request) {

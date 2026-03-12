@@ -99,20 +99,35 @@ main {
     <div class="w-full">
         <div class="flex flex-wrap items-center gap-3 mb-4">
             <h1 class="text-3xl md:text-4xl font-extrabold text-gray-900 tracking-tight">{{.ActiveUser.Name}}</h1>
-            <button onclick="toggleNotepad()" class="flex items-center gap-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 px-4 py-2 rounded-xl font-bold transition duration-200 text-sm shadow-sm">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                My Notes
-            </button>
+            
+            <div class="flex items-center gap-2">
+                <button onclick="toggleNotepad()" class="flex items-center gap-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 px-4 py-2 rounded-xl font-bold transition duration-200 text-sm shadow-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                    </svg>
+                    My Notes
+                </button>
+
+                <button onclick="toggleAI()" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold transition duration-200 text-sm shadow-lg shadow-blue-100">
+                    <div class="relative">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        <span class="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse border border-white"></span>
+                    </div>
+                    HarveyAI
+                </button>
+            </div>
         </div>
-        
+
         <form id="renameForm" onsubmit="handleRename(event)" class="mt-4 flex items-center gap-2 bg-white border border-gray-200 p-1 rounded-lg shadow-sm w-full max-w-sm">
-    <input type="hidden" name="user_id" id="rename_user_id" value="{{.ActiveUser.ID}}">
-    <input type="text" name="new_name" id="new_name" placeholder="Rename {{.ActiveUser.Name}}..." required autocomplete="off"
-           class="flex-grow bg-gray-50 text-xs p-1.5 rounded-md outline-none focus:ring-1 focus:ring-blue-500 border-none min-w-0">
-    <button type="submit" class="shrink-0 text-[10px] bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-md font-bold transition duration-200 shadow-sm active:scale-95">
-        RENAME
-    </button>
-</form>
+            <input type="hidden" name="user_id" id="rename_user_id" value="{{.ActiveUser.ID}}">
+            <input type="text" name="new_name" id="new_name" placeholder="Rename {{.ActiveUser.Name}}..." required autocomplete="off"
+                   class="flex-grow bg-gray-50 text-xs p-1.5 rounded-md outline-none focus:ring-1 focus:ring-blue-500 border-none min-w-0">
+            <button type="submit" class="shrink-0 text-[10px] bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-md font-bold transition duration-200">
+                RENAME
+            </button>
+        </form>
         <p class="text-gray-500 font-medium tracking-wide text-sm mt-2">Daily Time Record & Progress</p>
     </div>
     
@@ -341,6 +356,37 @@ main {
                 </form>
             </div>
             {{end}}
+        </div>
+    </div>
+</div>
+
+<div id="aiSidebar" class="fixed top-0 right-0 h-full w-80 bg-white shadow-[-10px_0_30px_rgba(0,0,0,0.1)] z-[500] transform translate-x-full transition-transform duration-500 ease-in-out flex flex-col border-l border-gray-100">
+    <div class="p-6 bg-blue-600 text-white flex justify-between items-center">
+        <div>
+            <h3 class="font-black text-xl tracking-tight">HarveyAI</h3>
+            <div class="flex gap-2 items-center mt-1">
+                <p class="text-[10px] opacity-80 uppercase font-bold tracking-widest">OJT Assistant</p>
+                <button onclick="clearChat()" class="text-[9px] bg-white/20 px-1.5 py-0.5 rounded hover:bg-white/40 transition">Clear Chat</button>
+            </div>
+        </div>
+        <button onclick="toggleAI()" class="p-2 hover:bg-white/10 rounded-full transition">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+    </div>
+    
+    <div id="aiMessages" class="flex-grow p-4 overflow-y-auto space-y-4 bg-gray-50/50">
+        <div class="bg-white border border-blue-100 p-4 rounded-2xl rounded-tl-none text-xs font-medium text-gray-700 shadow-sm leading-relaxed initial-msg">
+            Hello! I'm <strong>HarveyAI</strong>. I've analyzed your logs. You've rendered <strong>{{printf "%.0f" .RenderedHours}} hours</strong> so far. How can I help?
+        </div>
+    </div>
+
+    <div class="p-4 border-t border-gray-100 bg-white">
+        <div class="flex gap-2">
+            <input type="text" id="aiInput" onkeypress="if(event.key==='Enter') askAI()" placeholder="Ask about your progress..." 
+                   class="flex-grow bg-gray-100 border-none rounded-2xl p-4 text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+            <button onclick="askAI()" class="bg-blue-600 text-white p-4 rounded-2xl hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all active:scale-90">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+            </button>
         </div>
     </div>
 </div>
@@ -622,6 +668,81 @@ function executeRename(uID, newName) {
     
     document.body.appendChild(finalForm);
     finalForm.submit();
+}
+
+// 1. Function to Load Chat on Page Refresh
+document.addEventListener("DOMContentLoaded", function() {
+    const savedChat = localStorage.getItem('harvey_chat');
+    const msgContainer = document.getElementById('aiMessages');
+    
+    if (savedChat) {
+        // We replace the container content with saved messages
+        msgContainer.innerHTML = savedChat;
+        // Always scroll to the bottom after loading
+        msgContainer.scrollTop = msgContainer.scrollHeight;
+    }
+});
+
+function toggleAI() {
+    const sidebar = document.getElementById('aiSidebar');
+    sidebar.classList.toggle('translate-x-full');
+}
+
+// 2. Function to Clear Chat History
+function clearChat() {
+    if(confirm("Delete all chat history?")) {
+        localStorage.removeItem('harvey_chat');
+        // Refresh the page to reset the UI to the initial state
+        location.reload();
+    }
+}
+
+async function askAI() {
+    const input = document.getElementById('aiInput');
+    const msgContainer = document.getElementById('aiMessages');
+    const question = input.value.trim();
+    if (!question) return;
+
+    // 1. Show User Message
+    const userHtml = `<div class="flex justify-end"><div class="bg-blue-600 text-white p-3 rounded-2xl rounded-tr-none text-xs max-w-[80%] shadow-md">${question}</div></div>`;
+    msgContainer.innerHTML += userHtml;
+    input.value = "";
+    msgContainer.scrollTop = msgContainer.scrollHeight;
+
+    // 2. Show "Thinking..."
+    const typingId = "typing-" + Date.now();
+    msgContainer.innerHTML += `<div id="${typingId}" class="flex justify-start"><div class="bg-gray-200 p-3 rounded-2xl rounded-tl-none text-xs text-gray-500 animate-pulse">HarveyAI is thinking...</div></div>`;
+    msgContainer.scrollTop = msgContainer.scrollHeight;
+
+    try {
+        // 3. Talk to your Go Backend
+        const response = await fetch(`/ai-chat?msg=${encodeURIComponent(question)}`);
+        const data = await response.json();
+
+        // 4. Remove "Thinking" and show real answer
+        const typingElement = document.getElementById(typingId);
+        if (typingElement) typingElement.remove();
+
+        const aiHtml = `
+            <div class="flex justify-start">
+                <div class="bg-white border border-gray-100 p-3 rounded-2xl rounded-tl-none text-xs max-w-[80%] shadow-sm text-gray-700 leading-relaxed">
+                    ${data.answer}
+                </div>
+            </div>`;
+        msgContainer.innerHTML += aiHtml;
+
+        // 5. SAVE TO LOCALSTORAGE (This is the key fix!)
+        localStorage.setItem('harvey_chat', msgContainer.innerHTML);
+
+    } catch (error) {
+        const typingElement = document.getElementById(typingId);
+        if (typingElement) {
+            typingElement.classList.remove('animate-pulse');
+            typingElement.innerHTML = `<div class="bg-red-50 text-red-500 p-3 rounded-2xl text-xs">Sorry, I'm having trouble connecting to my brain right now.</div>`;
+        }
+    }
+    
+    msgContainer.scrollTop = msgContainer.scrollHeight;
 }
 </script>
 </body>
