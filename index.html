@@ -92,7 +92,7 @@
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-1">
                     <span class="text-sm font-bold text-gray-600 uppercase tracking-tight">Completion Progress</span>
                     <span class="text-sm font-bold text-blue-600">
-                        {{printf "%.1f" .RenderedHours}} / {{printf "%.0f" .ActiveUser.TargetHours}} Hours
+                        {{printf "%.0f" .RenderedHours}} / {{printf "%.0f" .ActiveUser.TargetHours}} Hours
                     </span>
                 </div>
                 <div class="w-full bg-gray-100 rounded-full h-4 overflow-hidden">
@@ -113,14 +113,14 @@
                 <div class="bg-blue-600 p-6 rounded-2xl shadow-lg border border-blue-700 text-white">
                     <p class="text-sm uppercase font-bold tracking-wider opacity-80">Rendered</p>
                     <p class="text-3xl font-black">
-                        {{printf "%.1f" .RenderedHours}}<span class="text-lg font-normal ml-1 opacity-80">hrs</span>
+                        {{printf "%.0f" .RenderedHours}}<span class="text-lg font-normal ml-1 opacity-80">hrs</span>
                     </p>
                 </div>
 
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                     <p class="text-sm text-gray-400 uppercase font-bold tracking-wider">Remaining</p>
                     <p class="text-3xl font-black text-orange-500">
-                        {{printf "%.1f" .RemainingHours}}<span class="text-lg font-normal ml-1 text-gray-400">hrs</span>
+                        {{printf "%.0f" .RemainingHours}}<span class="text-lg font-normal ml-1 text-gray-400">hrs</span>
                     </p>
                 </div>
             </div>
@@ -149,18 +149,18 @@
 
                         <div id="group-manual" class="md:col-span-2">
                             <label class="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">Hours</label>
-                            <input type="number" step="0.01" name="hours" id="input-hours" placeholder="e.g. 8" required 
+                            <input type="number" step="1" name="hours" id="input-hours" placeholder="e.g. 8" required 
                                 class="w-full border-gray-200 border p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition bg-gray-50/50">
                         </div>
 
                         <div id="group-time-in" class="hidden">
                             <label class="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">Time In</label>
-                            <input type="time" id="time-in" onchange="calculateHours()"
+                            <input type="time" name="time_in" id="time-in" onchange="calculateHours()"
                                 class="w-full border-gray-200 border p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition bg-gray-50/50">
                         </div>
                         <div id="group-time-out" class="hidden">
                             <label class="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">Time Out</label>
-                            <input type="time" id="time-out" onchange="calculateHours()"
+                            <input type="time" name="time_out" id="time-out" onchange="calculateHours()"
                                 class="w-full border-gray-200 border p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition bg-gray-50/50">
                         </div>
 
@@ -196,13 +196,20 @@
                             {{range .Logs}}
                             <tr class="hover:bg-blue-50/30 transition">
                                 <td class="p-4 font-bold text-gray-700 whitespace-nowrap">{{.Date}}</td>
-                                <td class="p-4 text-right font-black text-blue-700">{{printf "%.1f" .Hours}} hrs</td>
+                                <td class="p-4 text-right font-black text-blue-700">{{printf "%.0f" .Hours}} hrs</td>
                                 <td class="p-4 text-center">
-                                    <a href="/delete?id={{.ID}}&u={{$.ActiveUser.ID}}" 
-                                       onclick="return confirm('Delete this record?')"
-                                       class="text-red-400 hover:text-red-600 font-bold">
-                                        Delete
-                                    </a>
+                                    <div class="flex items-center justify-center gap-4">
+                                        <button onclick="openViewModal('{{.Date}}', '{{.Hours}}', '{{.TimeIn}}', '{{.TimeOut}}')" 
+                                                class="text-blue-500 hover:text-blue-700 font-bold transition-colors">
+                                            View
+                                        </button>
+
+                                        <a href="/delete?id={{.ID}}&u={{$.ActiveUser.ID}}" 
+                                           onclick="return confirm('Delete this record?')"
+                                           class="text-red-400 hover:text-red-600 font-bold">
+                                            Delete
+                                        </a>
+                                    </div>
                                 </td>
                             </tr>
                             {{else}}
@@ -239,7 +246,40 @@
         </div>
     </main>
 
-    <script>
+    <div id="viewModal" class="fixed inset-0 bg-black/50 z-[100] hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl">
+            <h3 class="text-xl font-black text-gray-900 mb-4">Entry Details</h3>
+            
+            <div class="space-y-4">
+                <div class="flex justify-between border-b pb-2">
+                    <span class="text-gray-400 font-bold uppercase text-xs">Date</span>
+                    <span id="view-date" class="font-bold text-gray-800"></span>
+                </div>
+
+                <div id="view-time-details" class="hidden space-y-4">
+                    <div class="flex justify-between border-b pb-2">
+                        <span class="text-gray-400 font-bold uppercase text-xs">Time In</span>
+                        <span id="view-in" class="font-bold text-blue-600"></span>
+                    </div>
+                    <div class="flex justify-between border-b pb-2">
+                        <span class="text-gray-400 font-bold uppercase text-xs">Time Out</span>
+                        <span id="view-out" class="font-bold text-blue-600"></span>
+                    </div>
+                </div>
+
+                <div class="flex justify-between border-b pb-2">
+                    <span class="text-gray-400 font-bold uppercase text-xs">Total Hours</span>
+                    <span id="view-hours" class="font-black text-blue-700 text-lg"></span>
+                </div>
+            </div>
+
+            <button onclick="closeViewModal()" class="w-full mt-6 bg-gray-900 text-white font-bold py-3 rounded-xl">
+                Close
+            </button>
+        </div>
+    </div>
+</body>
+   <script>
     // Sidebar Controls
     const openBtn = document.getElementById('open-menu');
     const closeBtn = document.getElementById('close-menu');
@@ -309,19 +349,48 @@
                 diff -= 1;
             }
 
-            hoursInput.value = diff.toFixed(1);
+            // UPDATED: Rounds to the nearest whole number (e.g., 8.3 becomes 8)
+            hoursInput.value = Math.round(diff);
         }
     }
 
-    // NEW: This runs every time you refresh the page
+    // This runs every time you refresh the page
     window.onload = function() {
         const savedMode = localStorage.getItem('preferred_mode');
         if (savedMode === 'calc') {
-            setMode('calc'); // Automatically switch to calculator if it was used last
+            setMode('calc');
         } else {
-            setMode('manual'); // Default to manual
+            setMode('manual');
         }
     };
+
+    function openViewModal(date, hours, timeIn, timeOut) {
+        const modal = document.getElementById('viewModal');
+        const timeDetails = document.getElementById('view-time-details');
+        
+        document.getElementById('view-date').innerText = date;
+        
+        // UPDATED: Rounds the hour display in the modal
+        document.getElementById('view-hours').innerText = Math.round(parseFloat(hours)) + " hrs";
+
+        // Logic: If timeIn exists and is not empty, show the extra details
+        if (timeIn && timeIn !== "" && timeIn !== "00:00") {
+            timeDetails.classList.remove('hidden');
+            document.getElementById('view-in').innerText = timeIn;
+            document.getElementById('view-out').innerText = timeOut;
+        } else {
+            timeDetails.classList.add('hidden');
+        }
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    function closeViewModal() {
+        const modal = document.getElementById('viewModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
 </script>
 </body>
 </html>
