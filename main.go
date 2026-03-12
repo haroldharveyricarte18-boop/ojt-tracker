@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/csv"
 	"fmt"
 	"html/template"
 	"log"
@@ -16,6 +17,8 @@ type User struct {
 	ID          int
 	Name        string
 	TargetHours float64
+	Notes       string // Added for notepad content
+	NotePass    string // Added for password protection
 }
 
 type Log struct {
@@ -39,26 +42,20 @@ type DashboardData struct {
 
 var db *sql.DB
 
-// migrateDatabase automatically adds missing columns to an existing database table.
 func migrateDatabase(db *sql.DB) {
-	var exists bool
-	// Check if the time_in column already exists in the logs table
-	query := `SELECT EXISTS (
-		SELECT 1 FROM information_schema.columns 
-		WHERE table_name='logs' AND column_name='time_in'
-	);`
+	// 1. Migrate Logs Table (Time In/Out)
+	var logsExist bool
+	db.QueryRow("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logs' AND column_name='time_in')").Scan(&logsExist)
+	if !logsExist {
+		db.Exec("ALTER TABLE logs ADD COLUMN time_in TEXT DEFAULT '', ADD COLUMN time_out TEXT DEFAULT ''")
+	}
 
-	err := db.QueryRow(query).Scan(&exists)
-	if err == nil && !exists {
-		fmt.Println("Detected missing columns. Migrating database...")
-		_, err := db.Exec(`ALTER TABLE logs 
-			ADD COLUMN time_in TEXT DEFAULT '', 
-			ADD COLUMN time_out TEXT DEFAULT ''`)
-		if err != nil {
-			log.Println("Migration Error:", err)
-		} else {
-			fmt.Println("Database migration successful: time_in and time_out added.")
-		}
+	// 2. Migrate Users Table (Notes and Password)
+	var notesExist bool
+	db.QueryRow("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='notes')").Scan(&notesExist)
+	if !notesExist {
+		fmt.Println("Migrating Users table for Notepad...")
+		db.Exec("ALTER TABLE users ADD COLUMN notes TEXT DEFAULT '', ADD COLUMN note_pass TEXT DEFAULT ''")
 	}
 }
 
@@ -117,6 +114,10 @@ func main() {
 	http.HandleFunc("/delete", deleteLogHandler)
 	http.HandleFunc("/update-target", updateTargetHandler)
 	http.HandleFunc("/rename", renameUserHandler)
+	http.HandleFunc("/setup-note-pass", setupNotePassHandler)
+	http.HandleFunc("/save-notes", saveNotesHandler)
+	http.HandleFunc("/verify-note-pass", verifyNotePassHandler)
+	http.HandleFunc("/export", exportHandler)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -125,6 +126,85 @@ func main() {
 
 	fmt.Println("Multi-User OJT Server starting at http://localhost:" + port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
+}
+
+func exportHandler(w http.ResponseWriter, r *http.Request) {
+	uID := r.URL.Query().Get("u")
+	if uID == "" {
+		http.Error(w, "User ID required", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Set the headers to tell the browser this is a downloadable CSV
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=OJT_Logs_User_%s.csv", uID))
+
+	// 2. Initialize the CSV writer
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	// 3. Write the Header Row
+	writer.Write([]string{"Date", "Hours", "Time In", "Time Out"})
+
+	// 4. Fetch ALL logs for this user from the database
+	rows, err := db.Query("SELECT date, hours, time_in, time_out FROM logs WHERE user_id = $1 ORDER BY date DESC", uID)
+	if err != nil {
+		log.Println("Export Query Error:", err)
+		return
+	}
+	defer rows.Close()
+
+	// 5. Loop through database results and write to CSV
+	for rows.Next() {
+		var l Log
+		if err := rows.Scan(&l.Date, &l.Hours, &l.TimeIn, &l.TimeOut); err != nil {
+			continue
+		}
+
+		row := []string{
+			l.Date,
+			fmt.Sprintf("%.1f", l.Hours),
+			l.TimeIn,
+			l.TimeOut,
+		}
+		writer.Write(row)
+	}
+}
+
+func verifyNotePassHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		uID := r.FormValue("user_id")
+		inputPass := r.FormValue("password")
+
+		var dbPass string
+		err := db.QueryRow("SELECT note_pass FROM users WHERE id = $1", uID).Scan(&dbPass)
+
+		if err == nil && inputPass == dbPass {
+			w.WriteHeader(http.StatusOK) // Send 200 OK if match
+			return
+		}
+	}
+	w.WriteHeader(http.StatusUnauthorized) // Send 401 if wrong
+}
+
+func setupNotePassHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		uID := r.FormValue("user_id")
+		pass := r.FormValue("password")
+		if pass != "" {
+			db.Exec("UPDATE users SET note_pass = $1 WHERE id = $2", pass, uID)
+		}
+		http.Redirect(w, r, "/?u="+uID, http.StatusSeeOther)
+	}
+}
+
+func saveNotesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		uID := r.FormValue("user_id")
+		notes := r.FormValue("notes")
+		db.Exec("UPDATE users SET notes = $1 WHERE id = $2", notes, uID)
+		http.Redirect(w, r, "/?u="+uID, http.StatusSeeOther)
+	}
 }
 
 func renameUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -154,7 +234,7 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	offset := (currentPage - 1) * 10
 
-	rowsU, err := db.Query("SELECT id, name, target FROM users ORDER BY id ASC")
+	rowsU, err := db.Query("SELECT id, name, target, notes, note_pass FROM users ORDER BY id ASC")
 	if err != nil {
 		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -167,7 +247,7 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	for rowsU.Next() {
 		var u User
-		rowsU.Scan(&u.ID, &u.Name, &u.TargetHours)
+		rowsU.Scan(&u.ID, &u.Name, &u.TargetHours, &u.Notes, &u.NotePass)
 		allUsers = append(allUsers, u)
 		if u.ID == userID {
 			activeUser = u
