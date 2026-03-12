@@ -680,7 +680,6 @@ document.addEventListener("DOMContentLoaded", function() {
     const msgContainer = document.getElementById('aiMessages');
     
     if (userName) {
-        // Load history specifically for the active user
         const savedChat = localStorage.getItem('harvey_chat_' + userName);
         if (savedChat) {
             msgContainer.innerHTML = savedChat;
@@ -689,17 +688,14 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 });
 
-// Function used by the Sidebar Links to change the active user context
 function prepChat(name) {
     document.getElementById('activeChatUser').value = name;
-    // The page will reload due to the <a> tag, and DOMContentLoaded will handle the rest.
 }
 
 function toggleAI() {
     const sidebar = document.getElementById('aiSidebar');
     sidebar.classList.toggle('translate-x-full');
 
-    // FIX: Only allow clicking on the sidebar when it's visible
     if (sidebar.classList.contains('translate-x-full')) {
         sidebar.style.pointerEvents = 'none';
     } else {
@@ -707,7 +703,6 @@ function toggleAI() {
     }
 }
 
-// 2. Function to Clear Chat History (Synced per User)
 function clearChat() {
     const userName = document.getElementById('activeChatUser').value;
     if(!userName) return;
@@ -718,12 +713,64 @@ function clearChat() {
     }
 }
 
+// Function to automatically push NEW logs
+async function autoSubmitLog(data) {
+    const userId = document.getElementById('rename_user_id').value; 
+    
+    const formData = new FormData();
+    formData.append("user_id", userId);
+    formData.append("date", data.date);
+    formData.append("hours", data.hours);
+    formData.append("time_in", data.time_in || "");
+    formData.append("time_out", data.time_out || "");
+
+    try {
+        const resp = await fetch("/add", {
+            method: "POST",
+            body: formData
+        });
+        return resp.ok;
+    } catch (err) {
+        console.error("Auto-submit failed:", err);
+        return false;
+    }
+}
+
+// NEW: Function to handle deletions requested by AI
+async function autoDeleteLog(date) {
+    // Check which ID your dashboard actually uses. 
+    // Is it 'rename_user_id' or just 'user_id'? 
+    const userIdElement = document.getElementById('rename_user_id');
+    const userId = userIdElement ? userIdElement.value : "";
+    
+    if (!userId) {
+        console.error("Could not find User ID to delete record.");
+        return false;
+    }
+
+    if(confirm(`HarveyAI: Confirmed to delete log for ${date}?`)) {
+        try {
+            // We fetch the new Go route
+            const resp = await fetch(`/delete-by-date?date=${date}&u=${userId}`);
+            if (resp.ok) {
+                console.log("Delete successful");
+                return true;
+            } else {
+                const errText = await resp.text();
+                console.error("Server refused delete:", errText);
+            }
+        } catch (err) {
+            console.error("Network error during delete:", err);
+        }
+    }
+    return false;
+}
+
 async function askAI() {
     const input = document.getElementById('aiInput');
     const msgContainer = document.getElementById('aiMessages');
     const question = input.value.trim();
     
-    // Get the dynamic user name and rendered hours
     const userName = document.getElementById('activeChatUser').value;
     const hours = document.getElementById('activeChatHours').value;
 
@@ -741,32 +788,64 @@ async function askAI() {
     msgContainer.scrollTop = msgContainer.scrollHeight;
 
     try {
-        // 3. Talk to Go Backend - Passing 'name' and 'hours' for context
+        // 3. Talk to Go Backend
         const url = `/ai-chat?msg=${encodeURIComponent(question)}&name=${encodeURIComponent(userName)}&hours=${hours}`;
         const response = await fetch(url);
         const data = await response.json();
+        
+        let aiAnswer = data.answer;
+        let successTriggered = false;
 
-        // 4. Remove "Thinking" and show real answer
+        // 4. COMMAND LOGIC: Only triggers if "COMMAND:" is in the response
+        if (aiAnswer.includes("COMMAND:")) {
+            const parts = aiAnswer.split("COMMAND:");
+            aiAnswer = parts[0].trim(); 
+            
+            try {
+                const commandData = JSON.parse(parts[1].trim());
+                
+                if (commandData.action === "add_log") {
+                    const success = await autoSubmitLog(commandData);
+                    if (success) {
+                        aiAnswer += "\n\n✅ **System:** Log added! Refreshing...";
+                        successTriggered = true;
+                    }
+                } else if (commandData.action === "delete_log") {
+                    const success = await autoDeleteLog(commandData.date);
+                    if (success) {
+                        aiAnswer += `\n\n🗑️ **System:** Log for ${commandData.date} deleted! Refreshing...`;
+                        successTriggered = true;
+                    }
+                }
+            } catch (e) {
+                console.error("Command parsing error", e);
+            }
+        }
+
+        // 5. Remove "Thinking" and show response
         const typingElement = document.getElementById(typingId);
         if (typingElement) typingElement.remove();
 
         const aiHtml = `
             <div class="flex justify-start">
                 <div class="bg-white border border-gray-100 p-3 rounded-2xl rounded-tl-none text-xs max-w-[80%] shadow-sm text-gray-700 leading-relaxed">
-                    ${data.answer}
+                    ${aiAnswer}
                 </div>
             </div>`;
         msgContainer.innerHTML += aiHtml;
 
-        // 5. SAVE TO INDIVIDUAL LOCALSTORAGE (The Sync Fix!)
+        // 6. SAVE TO LOCALSTORAGE
         localStorage.setItem('harvey_chat_' + userName, msgContainer.innerHTML);
+
+        // 7. ONLY REFRESH IF AN ACTION HAPPENED
+        if (successTriggered) {
+            setTimeout(() => { location.reload(); }, 1500);
+        }
 
     } catch (error) {
         const typingElement = document.getElementById(typingId);
-        if (typingElement) {
-            typingElement.classList.remove('animate-pulse');
-            typingElement.innerHTML = `<div class="bg-red-50 text-red-500 p-3 rounded-2xl text-xs">Sorry, I'm having trouble connecting to my brain right now.</div>`;
-        }
+        if (typingElement) typingElement.remove();
+        console.error("Chat Error:", error);
     }
     
     msgContainer.scrollTop = msgContainer.scrollHeight;

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -122,6 +123,7 @@ func main() {
 	http.HandleFunc("/verify-note-pass", verifyNotePassHandler)
 	http.HandleFunc("/export", exportHandler)
 	http.HandleFunc("/ai-chat", aiChatHandler)
+	http.HandleFunc("/delete-by-date", deleteByDateHandler(db))
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -132,37 +134,78 @@ func main() {
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
+func deleteByDateHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		date := r.URL.Query().Get("date")
+		userID := r.URL.Query().Get("u")
+
+		// DEBUG: See what is actually arriving in your terminal
+		log.Printf("Attempting delete - Date: '%s', UserID: '%s'", date, userID)
+
+		if date == "" || userID == "" {
+			http.Error(w, "Missing date or user ID", 400)
+			return
+		}
+
+		// IMPORTANT: PostgreSQL uses $1, $2 instead of ?
+		// Also, make sure your table name is 'logs' and columns are 'date' and 'user_id'
+		query := `DELETE FROM logs WHERE date = $1 AND user_id = $2`
+
+		_, err := db.Exec(query, date, userID)
+		if err != nil {
+			log.Println("DATABASE ERROR:", err)
+			http.Error(w, "Database error", 500)
+			return
+		}
+
+		log.Println("Successfully deleted log for", date)
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
 func aiChatHandler(w http.ResponseWriter, r *http.Request) {
-	// Get message AND name from the frontend
+	// 1. Get query, name, and current progress from the URL
 	query := r.URL.Query().Get("msg")
 	userName := r.URL.Query().Get("name")
+	renderedHours := r.URL.Query().Get("hours") // New: Passing progress from frontend
 
-	// If no name is provided (e.g., direct URL access), use a default
 	if userName == "" {
 		userName = "Guest"
 	}
 
 	apiKey := os.Getenv("GROQ_API_KEY")
 
-	// 2. CHECK: If this is the first time this user is chatting,
-	// initialize their specific history with a system prompt.
+	// 2. THE BRAIN UPGRADE: The System Prompt (V2 - Smart Filtering)
 	if _, exists := userHistories[userName]; !exists {
+		today := time.Now().Format("2006-01-02")
 		userHistories[userName] = []map[string]string{
 			{
-				"role":    "system",
-				"content": "You are HarveyAI, a helpful assistant for an OJT tracker. You are currently talking to " + userName + ".",
+				"role": "system",
+				"content": "You are HarveyAI, a smart OJT assistant for " + userName + ". " +
+					"CURRENT DATE: " + today + ". " +
+					"PROGRESS: " + renderedHours + " hours done. " +
+
+					"STRICT RULES:\n" +
+					"1. For normal greetings (Hi, Hello, How are you), just respond warmly. NEVER include a COMMAND: string.\n" +
+
+					"2. ACTION - ADD LOG: If asked to record/add hours (e.g., 'record 8am-5pm'), calculate hours and append: " +
+					"COMMAND:{\"action\": \"add_log\", \"hours\": 0, \"date\": \"" + today + "\", \"time_in\": \"\", \"time_out\": \"\"}\n" +
+
+					"3. ACTION - DELETE LOG: If asked to delete a log (e.g., 'delete today's log' or 'remove Feb 20 log'), append: " +
+					"COMMAND:{\"action\": \"delete_log\", \"date\": \"YYYY-MM-DD\"}\n" +
+
+					"4. Be concise and professional. Do not tell the user about the JSON format.",
 			},
 		}
 	}
 
-	// 3. RECORD: Add the user's current question to THEIR folder
+	// 3. Add user message
 	userHistories[userName] = append(userHistories[userName], map[string]string{
 		"role":    "user",
 		"content": query,
 	})
 
-	// 4. REQUEST: Send the ENTIRE history of that specific user to Groq
-	// This is how the AI "remembers" what you said 2 minutes ago.
+	// 4. Send to Groq
 	requestBody, _ := json.Marshal(map[string]interface{}{
 		"model":    "llama-3.3-70b-versatile",
 		"messages": userHistories[userName],
@@ -188,15 +231,12 @@ func aiChatHandler(w http.ResponseWriter, r *http.Request) {
 			} `json:"message"`
 		} `json:"choices"`
 	}
-
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	// 5. RESPONSE: Get the answer and save it to that user's history folder
+	// 5. Save and Return
 	reply := "I'm sorry, I'm resting right now."
 	if len(result.Choices) > 0 {
 		reply = result.Choices[0].Message.Content
-
-		// Add the AI's reply to history so it's remembered next time
 		userHistories[userName] = append(userHistories[userName], map[string]string{
 			"role":    "assistant",
 			"content": reply,
