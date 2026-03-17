@@ -167,15 +167,22 @@ func aiChatHandler(w http.ResponseWriter, r *http.Request) {
 	// 1. Get query, name, and current progress from the URL
 	query := r.URL.Query().Get("msg")
 	userName := r.URL.Query().Get("name")
-	renderedHours := r.URL.Query().Get("hours") // New: Passing progress from frontend
+	renderedHours := r.URL.Query().Get("hours")
 
 	if userName == "" {
 		userName = "Guest"
 	}
 
+	// Check if API Key exists
 	apiKey := os.Getenv("GROQ_API_KEY")
+	if apiKey == "" {
+		log.Println("CRITICAL ERROR: GROQ_API_KEY is not set in environment variables.")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"answer": "System Error: API Key missing. Please check server settings."})
+		return
+	}
 
-	// 2. THE BRAIN UPGRADE: The System Prompt (V2 - Smart Filtering)
+	// 2. THE BRAIN UPGRADE: The System Prompt
 	if _, exists := userHistories[userName]; !exists {
 		today := time.Now().Format("2006-01-02")
 		userHistories[userName] = []map[string]string{
@@ -184,17 +191,11 @@ func aiChatHandler(w http.ResponseWriter, r *http.Request) {
 				"content": "You are HarveyAI, a smart OJT assistant for " + userName + ". " +
 					"CURRENT DATE: " + today + ". " +
 					"PROGRESS: " + renderedHours + " hours done. " +
-
 					"STRICT RULES:\n" +
-					"1. For normal greetings (Hi, Hello, How are you), just respond warmly. NEVER include a COMMAND: string.\n" +
-
-					"2. ACTION - ADD LOG: If asked to record/add hours (e.g., 'record 8am-5pm'), calculate hours and append: " +
-					"COMMAND:{\"action\": \"add_log\", \"hours\": 0, \"date\": \"" + today + "\", \"time_in\": \"\", \"time_out\": \"\"}\n" +
-
-					"3. ACTION - DELETE LOG: If asked to delete a log (e.g., 'delete today's log' or 'remove Feb 20 log'), append: " +
-					"COMMAND:{\"action\": \"delete_log\", \"date\": \"YYYY-MM-DD\"}\n" +
-
-					"4. Be concise and professional. Do not tell the user about the JSON format.",
+					"1. For normal greetings, respond warmly without COMMANDs.\n" +
+					"2. ACTION - ADD LOG: If asked to record hours, append: COMMAND:{\"action\": \"add_log\", \"hours\": 0, \"date\": \"" + today + "\", \"time_in\": \"\", \"time_out\": \"\"}\n" +
+					"3. ACTION - DELETE LOG: If asked to delete, append: COMMAND:{\"action\": \"delete_log\", \"date\": \"YYYY-MM-DD\"}\n" +
+					"4. Be concise and professional.",
 			},
 		}
 	}
@@ -215,14 +216,26 @@ func aiChatHandler(w http.ResponseWriter, r *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 15 * time.Second} // Added timeout for safety
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("Groq Error:", err)
-		http.Error(w, "AI Error", 500)
+		log.Println("Network/Request Error:", err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"answer": "I'm having trouble connecting to the network."})
 		return
 	}
 	defer resp.Body.Close()
+
+	// 5. NEW: Status Check for API Errors (Expired Key, Rate Limit, etc.)
+	if resp.StatusCode != http.StatusOK {
+		var errorDetail map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&errorDetail)
+		log.Printf("GROQ API ERROR: Status %d - Details: %v", resp.StatusCode, errorDetail)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"answer": "I'm sorry, my AI service is currently unavailable (Status " + fmt.Sprint(resp.StatusCode) + ")."})
+		return
+	}
 
 	var result struct {
 		Choices []struct {
@@ -231,9 +244,12 @@ func aiChatHandler(w http.ResponseWriter, r *http.Request) {
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	json.NewDecoder(resp.Body).Decode(&result)
 
-	// 5. Save and Return
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Println("JSON Decoding Error:", err)
+	}
+
+	// 6. Save and Return
 	reply := "I'm sorry, I'm resting right now."
 	if len(result.Choices) > 0 {
 		reply = result.Choices[0].Message.Content
@@ -446,10 +462,18 @@ func addLogHandler(w http.ResponseWriter, r *http.Request) {
 func deleteLogHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	uID := r.URL.Query().Get("u")
-	if id != "" {
-		db.Exec("DELETE FROM logs WHERE id = $1", id)
+
+	if id != "" && uID != "" {
+		// FIX: Use $1 and $2 for PostgreSQL
+		_, err := db.Exec("DELETE FROM logs WHERE id = $1 AND user_id = $2", id, uID)
+		if err != nil {
+			log.Println("Error deleting record:", err)
+		}
 	}
-	http.Redirect(w, r, "/?u="+uID, http.StatusSeeOther)
+
+	// Double check if your main route is "/" or "/dashboard"
+	// If you are using the pink dashboard, it's usually "/dashboard"
+	http.Redirect(w, r, "/dashboard?u="+uID, http.StatusSeeOther)
 }
 
 func updateTargetHandler(w http.ResponseWriter, r *http.Request) {
