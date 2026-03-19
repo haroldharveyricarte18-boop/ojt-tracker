@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - OJT Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="/static/bekats.jpg">
+    <style>body { font-family: 'Plus Jakarta Sans', sans-serif; }</style>
+</head>
+<body class="bg-pink-50 min-h-screen flex items-center justify-center p-4">
+    <div class="max-w-md w-full bg-white rounded-3xl shadow-xl border border-pink-100 p-8">
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-pink-100 rounded-2xl mb-4">
+                <span class="text-3xl">🌸</span>
+            </div>
+            <h1 class="text-2xl font-bold text-pink-900">Welcome Back</h1>
+            <p class="text-pink-500 text-sm">Sign in to track your OJT hours</p>
+        </div>
+
+        {{range .}}
+        <div class="mb-6 p-4 rounded-2xl bg-red-50 border border-red-100 flex items-center gap-3 animate-bounce">
+            <span class="text-lg">⚠️</span>
+            <p class="text-red-600 text-xs font-bold leading-tight">{{.}}</p>
+        </div>
+        {{end}}
+
+        <form action="/auth-login" method="POST" class="space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-pink-900 uppercase tracking-wider mb-1 ml-1">Username</label>
+                <input type="text" name="username" required 
+                    class="w-full px-4 py-3 rounded-xl border border-pink-100 focus:ring-2 focus:ring-pink-500 focus:outline-none transition-all text-sm"
+                    placeholder="Enter your username">
+            </div>
+            
+            <div class="space-y-1">
+                <div class="flex justify-between items-center px-1">
+                    <label class="block text-xs font-bold text-pink-900 uppercase tracking-wider">Password</label>
+                    <button type="button" onclick="openForgotModal()" 
+                        class="text-[10px] font-bold text-pink-400 hover:text-pink-600 transition-colors uppercase tracking-widest">
+                        Forgot Password?
+                    </button>
+                </div>
+                <input type="password" name="password" required 
+                    class="w-full px-4 py-3 rounded-xl border border-pink-100 focus:ring-2 focus:ring-pink-500 focus:outline-none transition-all text-sm"
+                    placeholder="••••••••">
+            </div>
+
+            <button type="submit" 
+                class="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-pink-200 transition-all transform active:scale-[0.98] mt-2">
+                LOGIN
+            </button>
+        </form>
+
+        <div class="mt-8 pt-6 border-t border-pink-50 text-center">
+            <p class="text-pink-500 text-sm">First time here?</p>
+            <a href="/register" class="text-pink-700 font-bold hover:underline">Register your existing account or Create new →</a>
+        </div>
+    </div>
+
+    <div id="forgotModal" class="hidden fixed inset-0 bg-pink-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl border border-pink-100 transform transition-all">
+            <div class="text-center">
+                <div class="w-20 h-20 bg-pink-50 rounded-3xl flex items-center justify-center mx-auto mb-4">
+                    <span class="text-4xl">🔑</span>
+                </div>
+                <h3 class="text-2xl font-black text-pink-900 mb-2">Password Reset</h3>
+                <p class="text-pink-500 text-sm leading-relaxed mb-6">
+                    Forgot your password? Please reach out to <span class="font-bold text-pink-700">Harvey</span> or <span class="font-bold text-pink-700">Erika</span> to get your access restored.
+                </p>
+                
+                <button onclick="closeForgotModal()" 
+                    class="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-pink-200 transition-all active:scale-95">
+                    GOT IT!
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openForgotModal() {
+            document.getElementById('forgotModal').classList.remove('hidden');
+        }
+
+        function closeForgotModal() {
+            document.getElementById('forgotModal').classList.add('hidden');
+        }
+
+        // Close modal if user clicks outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('forgotModal');
+            if (event.target == modal) {
+                closeForgotModal();
+            }
+        }
+    </script>
+</body>
+</html>

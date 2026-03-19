@@ -13,15 +13,19 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gorilla/sessions"
+
 	_ "github.com/lib/pq"
 )
 
 type User struct {
 	ID          int
 	Name        string
+	Username    string // NEW: For logging in
+	Password    string // NEW: To protect the account
 	TargetHours float64
-	Notes       string // Added for notepad content
-	NotePass    string // Added for password protection
+	Notes       string
+	NotePass    string
 }
 
 type Log struct {
@@ -46,6 +50,18 @@ type DashboardData struct {
 var db *sql.DB
 var userHistories = make(map[string][]map[string]string)
 
+// Replace your store definition with this:
+var store = sessions.NewFilesystemStore("./sessions", []byte("your-secret-key"))
+
+func init() {
+	store.Options = &sessions.Options{
+		Path:     "/",
+		MaxAge:   60 * 60 * 24 * 7, // 7 Days (Persistent)
+		HttpOnly: true,             // Prevents JavaScript access (Security)
+		Secure:   false,            // Set to true if using HTTPS
+	}
+}
+
 func migrateDatabase(db *sql.DB) {
 	// 1. Migrate Logs Table (Time In/Out)
 	var logsExist bool
@@ -60,6 +76,14 @@ func migrateDatabase(db *sql.DB) {
 	if !notesExist {
 		fmt.Println("Migrating Users table for Notepad...")
 		db.Exec("ALTER TABLE users ADD COLUMN notes TEXT DEFAULT '', ADD COLUMN note_pass TEXT DEFAULT ''")
+	}
+	// 3. Migrate Users Table for Login System
+	var loginExist bool
+	db.QueryRow("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='username')").Scan(&loginExist)
+	if !loginExist {
+		fmt.Println("Migrating Users table for Login/Register...")
+		// We allow NULL at first so Erika/Harvz data doesn't break
+		db.Exec("ALTER TABLE users ADD COLUMN username TEXT UNIQUE, ADD COLUMN password TEXT")
 	}
 }
 
@@ -111,6 +135,7 @@ func main() {
 			db.Exec("INSERT INTO users (name, target) VALUES ($1, $2)", name, 480.0)
 		}
 	}
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	// 4. Routes
 	http.HandleFunc("/", dashboardHandler)
@@ -124,6 +149,14 @@ func main() {
 	http.HandleFunc("/export", exportHandler)
 	http.HandleFunc("/ai-chat", aiChatHandler)
 	http.HandleFunc("/delete-by-date", deleteByDateHandler(db))
+	// New Login System Routes
+	http.HandleFunc("/login", loginPageHandler)       // Shows the pink login.html
+	http.HandleFunc("/register", registerPageHandler) // Shows the pink register.html
+	http.HandleFunc("/auth-login", authLoginHandler)  // Logic to check password
+	http.HandleFunc("/auth-reg", authRegHandler)      // Logic to save new account
+	http.HandleFunc("/logout", logoutHandler)         // To sign out
+	http.HandleFunc("/admin", adminHandler)
+	http.HandleFunc("/admin/reset-password", adminResetPasswordHandler)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -132,6 +165,85 @@ func main() {
 
 	fmt.Println("Multi-User OJT Server starting at http://localhost:" + port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
+}
+
+func adminResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	session, _ := store.Get(r, "session-name")
+	uIDStr, _ := session.Values["user_id"].(string)
+	userID, _ := strconv.Atoi(uIDStr)
+
+	// Security: Only Erika (1) or Harvey (4)
+	if userID != 1 && userID != 4 {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		targetID := r.FormValue("target_user_id")
+		newPass := r.FormValue("new_password")
+
+		_, err := db.Exec("UPDATE users SET password = $1 WHERE id = $2", newPass, targetID)
+		if err != nil {
+			http.Error(w, "Failed to reset password", 500)
+			return
+		}
+		// Redirect back to admin with a success message
+		http.Redirect(w, r, "/admin?reset_success=1", http.StatusSeeOther)
+	}
+}
+
+func adminHandler(w http.ResponseWriter, r *http.Request) {
+	session, _ := store.Get(r, "session-name")
+
+	// 1. Security Check: Only Erika (1) and Harvey (4)
+	uIDStr, ok := session.Values["user_id"].(string)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	userID, _ := strconv.Atoi(uIDStr)
+	if userID != 1 && userID != 4 {
+		http.Error(w, "🛡️ Access Denied: Admins Only!", http.StatusForbidden)
+		return
+	}
+
+	// 2. Fetch all students and their total hours
+	rows, err := db.Query(`
+        SELECT u.id, u.name, u.target, COALESCE(SUM(l.hours), 0) as rendered
+        FROM users u 
+        LEFT JOIN logs l ON u.id = l.user_id 
+        GROUP BY u.id 
+        ORDER BY rendered DESC`) // Shows students with most hours first
+
+	if err != nil {
+		log.Println("Admin Query Error:", err)
+		http.Error(w, "Database error", 500)
+		return
+	}
+	defer rows.Close()
+
+	type AdminUser struct {
+		ID       int
+		Name     string
+		Target   float64
+		Rendered float64
+	}
+
+	var students []AdminUser
+	for rows.Next() {
+		var s AdminUser
+		rows.Scan(&s.ID, &s.Name, &s.Target, &s.Rendered)
+		students = append(students, s)
+	}
+
+	// 3. Load the Admin Template
+	tmpl, err := template.ParseFiles("admin.html")
+	if err != nil {
+		http.Error(w, "Template error: "+err.Error(), 500)
+		return
+	}
+	tmpl.Execute(w, students)
 }
 
 func deleteByDateHandler(db *sql.DB) http.HandlerFunc {
@@ -359,9 +471,22 @@ func renameUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func dashboardHandler(w http.ResponseWriter, r *http.Request) {
-	uParam := r.URL.Query().Get("u")
-	userID, _ := strconv.Atoi(uParam)
+	// 1. GET THE SESSION
+	session, _ := store.Get(r, "session-name")
 
+	// 2. CHECK IF LOGGED IN
+	auth, ok := session.Values["authenticated"].(bool)
+	if !ok || !auth {
+		// If not logged in, send them to the login page
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	// 3. GET USER ID FROM SESSION (Instead of URL)
+	sessionUserIDStr, _ := session.Values["user_id"].(string)
+	userID, _ := strconv.Atoi(sessionUserIDStr)
+
+	// --- PAGINATION LOGIC ---
 	pParam := r.URL.Query().Get("p")
 	currentPage, _ := strconv.Atoi(pParam)
 	if currentPage < 1 {
@@ -369,37 +494,24 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	offset := (currentPage - 1) * 10
 
-	rowsU, err := db.Query("SELECT id, name, target, notes, note_pass FROM users ORDER BY id ASC")
+	// 4. FETCH THE LOGGED-IN USER DETAILS
+	var activeUser User
+	err := db.QueryRow("SELECT id, name, target, notes, note_pass FROM users WHERE id = $1", userID).
+		Scan(&activeUser.ID, &activeUser.Name, &activeUser.TargetHours, &activeUser.Notes, &activeUser.NotePass)
+
 	if err != nil {
-		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		// If user doesn't exist anymore, clear session and boot them
+		session.Options.MaxAge = -1
+		session.Save(r, w)
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	defer rowsU.Close()
 
-	var allUsers []User
-	var activeUser User
-	userFound := false
-
-	for rowsU.Next() {
-		var u User
-		rowsU.Scan(&u.ID, &u.Name, &u.TargetHours, &u.Notes, &u.NotePass)
-		allUsers = append(allUsers, u)
-		if u.ID == userID {
-			activeUser = u
-			userFound = true
-		}
-	}
-
-	if !userFound && len(allUsers) > 0 {
-		activeUser = allUsers[0]
-		userID = activeUser.ID
-	}
-
-	// Calculate Total Rendered (using COALESCE to handle NULL/Empty cases)
+	// 5. FETCH TOTAL HOURS
 	var totalRendered float64
 	db.QueryRow("SELECT COALESCE(SUM(hours), 0) FROM logs WHERE user_id = $1", userID).Scan(&totalRendered)
 
-	// Fetch Logs with Time Data
+	// 6. FETCH LOGS (ONLY FOR THIS USER)
 	rowsL, err := db.Query("SELECT id, date, hours, time_in, time_out FROM logs WHERE user_id = $1 ORDER BY date DESC LIMIT 10 OFFSET $2", userID, offset)
 	if err != nil {
 		http.Error(w, "Query error: "+err.Error(), http.StatusInternalServerError)
@@ -416,9 +528,10 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		logs = append(logs, l)
 	}
 
+	// 7. PREPARE DATA FOR TEMPLATE
 	data := DashboardData{
-		ActiveUser:     activeUser,
-		AllUsers:       allUsers,
+		ActiveUser: activeUser,
+		// AllUsers:    nil, // We set this to nil because students shouldn't see each other now
 		RenderedHours:  totalRendered,
 		RemainingHours: activeUser.TargetHours - totalRendered,
 		Logs:           logs,
@@ -473,7 +586,7 @@ func deleteLogHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Double check if your main route is "/" or "/dashboard"
 	// If you are using the pink dashboard, it's usually "/dashboard"
-	http.Redirect(w, r, "/dashboard?u="+uID, http.StatusSeeOther)
+	http.Redirect(w, r, "/?u="+uID, http.StatusSeeOther)
 }
 
 func updateTargetHandler(w http.ResponseWriter, r *http.Request) {
@@ -487,4 +600,140 @@ func updateTargetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func loginPageHandler(w http.ResponseWriter, r *http.Request) {
+	// 1. Get the session
+	session, _ := store.Get(r, "session-name")
+
+	// 2. Retrieve the "error" flashes
+	// This returns an []interface{} containing any messages we saved
+	flashes := session.Flashes("error")
+
+	// 3. IMPORTANT: You must save the session after reading flashes.
+	// This tells the session to "delete" them so they don't show up again on refresh.
+	session.Save(r, w)
+
+	tmpl, _ := template.ParseFiles("login.html")
+
+	// 4. Pass the flashes slice to the template
+	tmpl.Execute(w, flashes)
+}
+
+func registerPageHandler(w http.ResponseWriter, r *http.Request) {
+	// Fetch existing names (Erika, Harvz, etc.) so they can "claim" them
+	rows, _ := db.Query("SELECT id, name FROM users WHERE username IS NULL OR username = ''")
+	var users []User
+	for rows.Next() {
+		var u User
+		rows.Scan(&u.ID, &u.Name)
+		users = append(users, u)
+	}
+	tmpl, _ := template.ParseFiles("register.html")
+	tmpl.Execute(w, users)
+}
+
+func authRegHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		uID := r.FormValue("user_id") // This will be "new" or a number like "1"
+		username := r.FormValue("username")
+		password := r.FormValue("password")
+		newName := r.FormValue("new_name") // From the new input field we added
+
+		if uID == "new" {
+			// 1. Logic for a BRAND NEW user
+			if newName == "" {
+				http.Redirect(w, r, "/register?error=empty_name", http.StatusSeeOther)
+				return
+			}
+
+			// Insert a fresh record into the database
+			_, err := db.Exec("INSERT INTO users (name, username, password, target) VALUES ($1, $2, $3, $4)",
+				newName, username, password, 480.0) // 480 is the default OJT target
+
+			if err != nil {
+				// Likely means the username is already taken
+				http.Redirect(w, r, "/register?error=taken", http.StatusSeeOther)
+				return
+			}
+		} else {
+			// 2. Logic for CLAIMING an existing name (Erika, Harvz, etc.)
+			_, err := db.Exec("UPDATE users SET username = $1, password = $2 WHERE id = $3", username, password, uID)
+			if err != nil {
+				http.Redirect(w, r, "/register?error=taken", http.StatusSeeOther)
+				return
+			}
+		}
+
+		// Success! Send them to login
+		http.Redirect(w, r, "/login?success=1", http.StatusSeeOther)
+	}
+}
+
+func authLoginHandler(w http.ResponseWriter, r *http.Request) {
+	// 1. Only allow POST requests
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	// 2. Parse the form data
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+
+	user := r.FormValue("username")
+	pass := r.FormValue("password")
+
+	var dbID int
+	var dbPass string
+	// Get user from DB
+	err = db.QueryRow("SELECT id, password FROM users WHERE username = $1", user).Scan(&dbID, &dbPass)
+
+	if err == nil && pass == dbPass {
+		// 3. Get the session
+		session, _ := store.Get(r, "session-name")
+
+		// 4. Set the values
+		session.Values["authenticated"] = true
+		session.Values["user_id"] = strconv.Itoa(dbID)
+
+		// 5. IMPORTANT: Save the session and check for errors
+		err = session.Save(r, w)
+		if err != nil {
+			log.Println("Error saving session:", err)
+			http.Error(w, "Internal Server Error: Could not save session", http.StatusInternalServerError)
+			return
+		}
+
+		// 6. Success! Redirect to dashboard
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	} else {
+		// --- FLASH MESSAGE LOGIC ---
+		log.Println("Login failed for user:", user)
+
+		// Get the session to store the flash message
+		session, _ := store.Get(r, "session-name")
+
+		// Add an "error" flash message
+		session.AddFlash("Invalid username or password. Please try again!", "error")
+
+		// Save the session so the flash is stored
+		session.Save(r, w)
+
+		// Redirect back to login; the handler for /login will now see this message
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+	}
+}
+
+func logoutHandler(w http.ResponseWriter, r *http.Request) {
+	session, _ := store.Get(r, "session-name")
+
+	// Set MaxAge to -1 to tell the browser to delete the cookie immediately
+	session.Options.MaxAge = -1
+	session.Save(r, w)
+
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OJT Tracker</title>
+    <link rel="icon" type="image/png" href="/static/bekats.jpg">
     <script src="https://cdn.tailwindcss.com"></script>
    <style>
     :root {
@@ -78,31 +79,29 @@
                 </svg>
             </button>
         </div>
-        <nav class="flex-grow p-4 space-y-2 overflow-y-auto">
-            <p class="text-[10px] font-bold text-pink-300 uppercase tracking-widest ml-2 mb-4">Select Member</p>
-            {{range .AllUsers}}
-            <a href="/?u={{.ID}}" 
-               onclick="prepChat('{{.Name}}')"
-               class="relative flex items-center p-3 rounded-xl transition-all group {{if eq .ID $.ActiveUser.ID}}bg-pink-50 text-pink-700 active-indicator{{else}}text-gray-500 hover:bg-pink-50/50 hover:text-[#f472b6]{{end}}">
-    
-    <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black mr-3 transition-colors
-        {{if eq .ID $.ActiveUser.ID}}bg-[#f472b6] text-white{{else}}bg-pink-100 text-pink-400 group-hover:bg-pink-200 group-hover:text-[#db2777]{{end}}">
-        {{slice .Name 0 1}}
+       <nav class="flex-grow p-4 space-y-4">
+    <div class="bg-pink-50/50 p-4 rounded-2xl border border-pink-100">
+        <p class="text-[10px] font-bold text-pink-400 uppercase tracking-widest mb-1">Current Session</p>
+        <p class="font-black text-[#db2777]">{{.ActiveUser.Name}}</p>
     </div>
-    
-    <span class="font-bold text-sm">{{.Name}}</span>
 
-    {{if eq .ID $.ActiveUser.ID}}
-    <div class="ml-auto">
-        <span class="relative flex h-2 w-2">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2 w-2 bg-[#f472b6]"></span>
-        </span>
-    </div>
+    {{if or (eq .ActiveUser.ID 1) (eq .ActiveUser.ID 4)}}
+    <a href="/admin" class="flex items-center gap-3 p-4 rounded-2xl text-pink-600 hover:bg-pink-100 font-bold transition-all border border-pink-100 bg-white shadow-sm group">
+        <span class="text-xl group-hover:scale-125 transition-transform">🛡️</span>
+        <div class="flex flex-col">
+            <span class="leading-none">Admin Panel</span>
+            <span class="text-[10px] text-pink-400 font-medium">Manage Students</span>
+        </div>
+    </a>
     {{end}}
-</a>
-{{end}}
-        </nav>
+
+    <a href="/logout" class="flex items-center gap-3 p-4 rounded-2xl text-rose-500 hover:bg-rose-50 font-bold transition-all border border-transparent hover:border-rose-100">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+        </svg>
+        Sign Out
+    </a>
+</nav>
 
         <div class="p-6 border-t border-pink-50">
             <p class="text-xs text-[#db2777] font-bold flex items-center">
@@ -142,14 +141,6 @@
                     </div>
                 </div>
 
-        <form id="renameForm" onsubmit="handleRename(event)" class="mt-4 flex items-center gap-2 bg-white border border-pink-100 p-1.5 rounded-xl shadow-sm w-full max-w-sm">
-            <input type="hidden" name="user_id" id="rename_user_id" value="{{.ActiveUser.ID}}">
-            <input type="text" name="new_name" id="new_name" placeholder="Rename {{.ActiveUser.Name}}..." required autocomplete="off"
-                   class="flex-grow bg-[#fff5f6] text-xs p-2 rounded-lg outline-none focus:ring-1 focus:ring-[#f472b6] border-none min-w-0 placeholder-pink-300">
-            <button type="submit" class="shrink-0 text-[10px] bg-[#db2777] hover:bg-[#be185d] text-white px-4 py-2 rounded-lg font-bold transition duration-200">
-                RENAME
-            </button>
-        </form>
         <p class="text-pink-400 font-medium tracking-wide text-sm mt-4">Daily Time Record & Progress</p>
     </div>
     
@@ -660,80 +651,6 @@ async function unlockNotes() {
         alert("Incorrect password. Please try again.");
         passInput.value = "";
     }
-}
-
-// Variable to store name change data while the modal is open
-let pendingRenameData = null;
-
-async function handleRename(event) {
-    event.preventDefault();
-    
-    // Capture the data from the form
-    pendingRenameData = {
-        uID: document.getElementById('rename_user_id').value,
-        newName: document.getElementById('new_name').value
-    };
-
-    // Check if user has a password set
-    const hasPass = "{{.ActiveUser.NotePass}}" !== "";
-
-    if (hasPass) {
-        // Show the custom modal instead of the old browser prompt
-        const modal = document.getElementById('renamePassModal');
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-        document.getElementById('rename-auth-pass').focus();
-    } else {
-        // No password set, proceed to update immediately
-        executeRename(pendingRenameData.uID, pendingRenameData.newName);
-    }
-}
-
-function closeRenameModal() {
-    const modal = document.getElementById('renamePassModal');
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-    document.getElementById('rename-auth-pass').value = "";
-}
-
-async function confirmRenameAction() {
-    const passInput = document.getElementById('rename-auth-pass');
-    
-    // Verify password using your existing Go backend route
-    const formData = new FormData();
-    formData.append('user_id', pendingRenameData.uID);
-    formData.append('password', passInput.value);
-
-    const response = await fetch('/verify-note-pass', { method: 'POST', body: formData });
-    
-    if (response.ok) {
-        // Success: Trigger the actual rename
-        executeRename(pendingRenameData.uID, pendingRenameData.newName);
-    } else {
-        // Failure: Shake or red-border the input
-        alert("Incorrect password!");
-        passInput.value = "";
-        passInput.focus();
-    }
-}
-
-// Separate function to handle the actual form submission to Go
-function executeRename(uID, newName) {
-    const finalForm = document.createElement('form');
-    finalForm.method = 'POST';
-    finalForm.action = '/rename';
-    
-    const fields = { 'user_id': uID, 'new_name': newName };
-    for (const [key, value] of Object.entries(fields)) {
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = key;
-        input.value = value;
-        finalForm.appendChild(input);
-    }
-    
-    document.body.appendChild(finalForm);
-    finalForm.submit();
 }
 
 // 1. Function to Load Chat on Page Refresh (Synced per User)

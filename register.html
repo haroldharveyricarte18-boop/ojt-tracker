@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - OJT Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="/static/bekats.jpg">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .hidden-field { display: none; }
+    </style>
+</head>
+<body class="bg-pink-50 min-h-screen flex items-center justify-center p-4">
+    <div class="max-w-md w-full bg-white rounded-3xl shadow-xl border border-pink-100 p-8">
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-12 h-12 bg-pink-100 rounded-2xl mb-4">
+                <span class="text-2xl">✨</span>
+            </div>
+            <h1 class="text-2xl font-bold text-pink-900">Create Account</h1>
+            <p class="text-pink-500 text-sm">Connect your login to your OJT record</p>
+        </div>
+
+        <form action="/auth-reg" method="POST" class="space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-pink-900 uppercase tracking-wider mb-1 ml-1">Select Your Name</label>
+                <select name="user_id" id="userSelect" onchange="toggleNewNameField()" required 
+                    class="w-full px-4 py-3 rounded-xl border border-pink-100 focus:ring-2 focus:ring-pink-500 focus:outline-none transition-all text-sm bg-white cursor-pointer">
+                    <option value="" disabled selected>Who are you?</option>
+                    {{range .}}
+                    <option value="{{.ID}}">{{.Name}}</option>
+                    {{end}}
+                    <option value="new" class="font-bold text-pink-600">✨ I am a New User</option>
+                </select>
+                <p class="text-[10px] text-pink-400 mt-1 ml-1">*Select your name to link existing hours.</p>
+            </div>
+
+            <div id="newNameContainer" class="hidden-field animate-pulse">
+                <label class="block text-xs font-bold text-pink-700 uppercase tracking-wider mb-1 ml-1">Your Full Name</label>
+                <input type="text" name="new_name" id="newNameInput"
+                    class="w-full px-4 py-3 rounded-xl border-2 border-pink-200 bg-pink-50 focus:ring-2 focus:ring-pink-500 focus:outline-none transition-all text-sm"
+                    placeholder="Enter your first and last name">
+            </div>
+            
+            <hr class="border-pink-50 my-2">
+
+            <div>
+                <label class="block text-xs font-bold text-pink-900 uppercase tracking-wider mb-1 ml-1">New Username</label>
+                <input type="text" name="username" required 
+                    class="w-full px-4 py-3 rounded-xl border border-pink-100 focus:ring-2 focus:ring-pink-500 focus:outline-none transition-all text-sm"
+                    placeholder="Choose a username">
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-pink-900 uppercase tracking-wider mb-1 ml-1">New Password</label>
+                <input type="password" name="password" required 
+                    class="w-full px-4 py-3 rounded-xl border border-pink-100 focus:ring-2 focus:ring-pink-500 focus:outline-none transition-all text-sm"
+                    placeholder="••••••••">
+            </div>
+
+            <button type="submit" 
+                class="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-pink-200 transition-all transform active:scale-[0.98] mt-2">
+                CREATE ACCOUNT
+            </button>
+        </form>
+
+        <div class="mt-6 text-center">
+            <a href="/login" class="text-pink-500 text-sm hover:underline font-semibold">Already have an account? Log in</a>
+        </div>
+    </div>
+
+    <script>
+        function toggleNewNameField() {
+            const select = document.getElementById('userSelect');
+            const container = document.getElementById('newNameContainer');
+            const input = document.getElementById('newNameInput');
+
+            if (select.value === 'new') {
+                container.style.display = 'block';
+                input.setAttribute('required', 'true');
+                input.focus();
+            } else {
+                container.style.display = 'none';
+                input.removeAttribute('required');
+                input.value = ''; // Clear it if they switch back
+            }
+        }
+    </script>
+</body>
+</html>
