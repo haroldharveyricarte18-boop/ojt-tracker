@@ -60,23 +60,34 @@
     </div>
 
     <div id="forgotModal" class="hidden fixed inset-0 bg-pink-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl border border-pink-100 transform transition-all">
-            <div class="text-center">
-                <div class="w-20 h-20 bg-pink-50 rounded-3xl flex items-center justify-center mx-auto mb-4">
-                    <span class="text-4xl">🔑</span>
-                </div>
-                <h3 class="text-2xl font-black text-pink-900 mb-2">Password Reset</h3>
-                <p class="text-pink-500 text-sm leading-relaxed mb-6">
-                    Forgot your password? Please reach out to <span class="font-bold text-pink-700">Harvey</span> or <span class="font-bold text-pink-700">Erika</span> to get your access restored.
-                </p>
-                
-                <button onclick="closeForgotModal()" 
-                    class="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-pink-200 transition-all active:scale-95">
-                    GOT IT!
-                </button>
+    <div class="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl border border-pink-100 transform transition-all">
+        <div class="text-center">
+            <div class="w-20 h-20 bg-pink-50 rounded-3xl flex items-center justify-center mx-auto mb-4">
+                <span class="text-4xl">🔑</span>
             </div>
+            <h3 class="text-2xl font-black text-pink-900 mb-2">Password Reset</h3>
+            <p class="text-pink-500 text-sm leading-relaxed mb-6">
+                Forgot your password? Tap below to message us directly on Messenger!
+            </p>
+            
+            <div class="flex gap-3 mb-4">
+                <a href="https://www.facebook.com/haroldharvey.ricarte" target="_blank" 
+                    class="flex-1 bg-pink-50 hover:bg-pink-100 text-pink-600 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2">
+                    <span>💬</span> Harvey
+                </a>
+                <a href="https://www.facebook.com/erikajave.doble" target="_blank" 
+                    class="flex-1 bg-pink-50 hover:bg-pink-100 text-pink-600 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2">
+                    <span>💬</span> Erika
+                </a>
+            </div>
+            
+            <button onclick="closeForgotModal()" 
+                class="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-pink-200 transition-all active:scale-95">
+                GOT IT!
+            </button>
         </div>
     </div>
+</div>
 
     <script>
         function openForgotModal() {

@@ -45,6 +45,7 @@ type DashboardData struct {
 	CurrentPage    int
 	NextPage       int
 	PrevPage       int
+	Announcement   string
 }
 
 var db *sql.DB
@@ -122,6 +123,22 @@ func main() {
 	if err != nil {
 		log.Fatal("Error creating logs table:", err)
 	}
+	// Create Announcements Table
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS announcements (
+        id SERIAL PRIMARY KEY, 
+        content TEXT, 
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`)
+	if err != nil {
+		log.Fatal("Error creating announcements table:", err)
+	}
+
+	// Insert default message if table is empty
+	var annCount int
+	db.QueryRow("SELECT COUNT(*) FROM announcements").Scan(&annCount)
+	if annCount == 0 {
+		db.Exec("INSERT INTO announcements (content) VALUES ($1)", "Welcome to the OJT Tracker! Stay productive!")
+	}
 
 	// 2. Run the migration to ensure existing tables get the new columns
 	migrateDatabase(db)
@@ -157,6 +174,8 @@ func main() {
 	http.HandleFunc("/logout", logoutHandler)         // To sign out
 	http.HandleFunc("/admin", adminHandler)
 	http.HandleFunc("/admin/reset-password", adminResetPasswordHandler)
+	http.HandleFunc("/admin/update-announcement", updateAnnouncementHandler)
+	http.HandleFunc("/delete-announcement", deleteAnnouncementHandler)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -165,6 +184,45 @@ func main() {
 
 	fmt.Println("Multi-User OJT Server starting at http://localhost:" + port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
+}
+
+// Updated: Removed the default "Welcome" text so "Clear" actually works
+func updateAnnouncementHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	content := r.FormValue("content")
+
+	// If content is empty here, it will save as "" in the DB.
+	// This ensures {{if .Announcement}} in your HTML will evaluate to false.
+	_, err := db.Exec("UPDATE announcements SET content = $1, updated_at = CURRENT_TIMESTAMP WHERE id = 1", content)
+	if err != nil {
+		log.Printf("Error updating announcement: %v", err)
+		http.Error(w, "Failed to update", 500)
+		return
+	}
+
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+// New: Dedicated function to quickly clear the broadcast
+func deleteAnnouncementHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	// We set content to an empty string to "hide" the broadcast on the dashboard
+	_, err := db.Exec("UPDATE announcements SET content = '', updated_at = CURRENT_TIMESTAMP WHERE id = 1")
+	if err != nil {
+		log.Printf("Error deleting announcement: %v", err)
+		http.Error(w, "Failed to delete", 500)
+		return
+	}
+
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
 func adminResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
@@ -210,11 +268,11 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 2. Fetch all students and their total hours
 	rows, err := db.Query(`
-        SELECT u.id, u.name, u.target, COALESCE(SUM(l.hours), 0) as rendered
-        FROM users u 
-        LEFT JOIN logs l ON u.id = l.user_id 
-        GROUP BY u.id 
-        ORDER BY rendered DESC`) // Shows students with most hours first
+		SELECT u.id, u.name, u.target, COALESCE(SUM(l.hours), 0) as rendered
+		FROM users u 
+		LEFT JOIN logs l ON u.id = l.user_id 
+		GROUP BY u.id 
+		ORDER BY rendered DESC`)
 
 	if err != nil {
 		log.Println("Admin Query Error:", err)
@@ -237,13 +295,33 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 		students = append(students, s)
 	}
 
-	// 3. Load the Admin Template
+	// 3. FETCH THE CURRENT ANNOUNCEMENT
+	var currentAnn string
+	// We pull the message with ID 1 from the table we created in Step 1
+	err = db.QueryRow("SELECT content FROM announcements WHERE id = 1").Scan(&currentAnn)
+	if err != nil {
+		currentAnn = "Welcome to the OJT Tracker!" // Fallback
+	}
+
+	// 4. PREPARE DATA WRAPPER
+	// We wrap both Students and the Announcement into one object
+	data := struct {
+		Students     []AdminUser
+		Announcement string
+	}{
+		Students:     students,
+		Announcement: currentAnn,
+	}
+
+	// 5. Load and Execute the Admin Template
 	tmpl, err := template.ParseFiles("admin.html")
 	if err != nil {
 		http.Error(w, "Template error: "+err.Error(), 500)
 		return
 	}
-	tmpl.Execute(w, students)
+
+	// We now execute with 'data' instead of just 'students'
+	tmpl.Execute(w, data)
 }
 
 func deleteByDateHandler(db *sql.DB) http.HandlerFunc {
@@ -528,16 +606,24 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		logs = append(logs, l)
 	}
 
-	// 7. PREPARE DATA FOR TEMPLATE
+	// 7. FETCH THE LATEST ANNOUNCEMENT (New part!)
+	var currentAnnouncement string
+	err = db.QueryRow("SELECT content FROM announcements WHERE id = 1").Scan(&currentAnnouncement)
+	if err != nil {
+		// Fallback if the query fails or table is empty
+		currentAnnouncement = "Welcome to the OJT Tracker!"
+	}
+
+	// 8. PREPARE DATA FOR TEMPLATE
 	data := DashboardData{
-		ActiveUser: activeUser,
-		// AllUsers:    nil, // We set this to nil because students shouldn't see each other now
+		ActiveUser:     activeUser,
 		RenderedHours:  totalRendered,
 		RemainingHours: activeUser.TargetHours - totalRendered,
 		Logs:           logs,
 		CurrentPage:    currentPage,
 		NextPage:       currentPage + 1,
 		PrevPage:       currentPage - 1,
+		Announcement:   currentAnnouncement, // Now index.html can see this!
 	}
 
 	tmpl, err := template.ParseFiles("index.html")
