@@ -8,23 +8,39 @@
     <script src="https://cdn.tailwindcss.com"></script>
    <style>
     :root {
+        /* Pink Theme (Default) */
         --primary-pink: #ff8fa3;
         --rose-pink: #f472b6;
         --peach: #ffb199;
         --primary-dark: #db2777;
         --bg-gradient: linear-gradient(135deg, #fff5f6 0%, #fff0eb 100%);
+        --scroll-thumb: #ffb199;
+        --card-border: #fce7f3; /* pink-50/100 */
     }
 
-    /* Updated to Pink Glow */
+    /* Lavender Theme Overrides */
+    [data-theme="lavender"] {
+        --primary-pink: #c4b5fd;    /* violet-300 */
+        --rose-pink: #a78bfa;       /* violet-400 */
+        --peach: #ddd6fe;           /* violet-100 */
+        --primary-dark: #7c3aed;    /* violet-600 */
+        --bg-gradient: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+        --scroll-thumb: #a78bfa;
+        --card-border: #ede9fe;     /* violet-50/100 */
+    }
+
+    /* Updated to Dynamic Glow */
     .progress-glow {
-        box-shadow: 0 0 15px rgba(244, 114, 182, 0.4);
+        /* Uses variable so glow color changes with theme */
+        box-shadow: 0 0 15px var(--rose-pink);
+        opacity: 0.6;
     }
 
     #mobile-sidebar {
         transition: transform 0.3s ease-in-out;
     }
 
-    /* Updated: This creates the thick ROSE PINK line on the left of the active user */
+    /* Side indicator follows theme */
     .active-indicator::before {
         content: "";
         position: absolute;
@@ -40,7 +56,8 @@
         max-width: 100%;
         overflow-x: hidden; 
         position: relative;
-        background: var(--bg-gradient); /* Sets the soft peach/pink background */
+        background: var(--bg-gradient);
+        transition: background 0.5s ease, color 0.5s ease;
     }
 
     main {
@@ -49,13 +66,42 @@
         box-sizing: border-box;
     }
 
-    /* Custom scrollbar for a cleaner pink look */
+    /* Custom scrollbar matches theme */
     ::-webkit-scrollbar {
         width: 6px;
     }
     ::-webkit-scrollbar-thumb {
-        background: var(--peach);
+        background: var(--scroll-thumb);
         border-radius: 10px;
+    }
+
+    /* --- THEME OVERRIDES FOR TAILWIND CLASSES --- */
+    /* This section forces your existing HTML colors to change when [data-theme="lavender"] is active */
+    
+    [data-theme="lavender"] .text-\[\#db2777\], 
+    [data-theme="lavender"] .text-pink-600,
+    [data-theme="lavender"] .text-pink-500 { 
+        color: var(--primary-dark) !important; 
+    }
+
+    [data-theme="lavender"] .bg-\[\#f472b6\], 
+    [data-theme="lavender"] .bg-pink-400,
+    [data-theme="lavender"] .bg-pink-500 { 
+        background-color: var(--rose-pink) !important; 
+    }
+
+    [data-theme="lavender"] .bg-pink-50, 
+    [data-theme="lavender"] .bg-\[\#fff5f6\] { 
+        background-color: var(--peach) !important; 
+    }
+
+    [data-theme="lavender"] .border-pink-50, 
+    [data-theme="lavender"] .border-pink-100 { 
+        border-color: var(--card-border) !important; 
+    }
+
+    [data-theme="lavender"] .shadow-pink-100 { 
+        box-shadow: 0 10px 15px -3px rgba(167, 139, 250, 0.2); 
     }
 </style>
 </head>
@@ -387,7 +433,7 @@
     </div>
 </div>
 
-<div id="aiSidebar" class="fixed top-0 right-0 h-full w-80 bg-white shadow-[-10px_0_40px_rgba(251,207,232,0.3)] z-[9999] transform translate-x-full transition-transform duration-500 ease-in-out flex flex-col border-l border-pink-50 pointer-events-none">
+<div id="aiSidebar" class="fixed top-0 right-0 h-full w-80 bg-white shadow-[-10px_0_40px_rgba(251,207,232,0.3)] z-[9999] transform translate-x-full invisible transition-all duration-500 ease-in-out flex flex-col border-l border-pink-50 pointer-events-none">
     
     <input type="hidden" id="activeChatUser" value="{{.ActiveUser.Name}}">
     <input type="hidden" id="activeChatHours" value="{{printf "%.0f" .RenderedHours}}">
@@ -687,12 +733,19 @@ function prepChat(name) {
 
 function toggleAI() {
     const sidebar = document.getElementById('aiSidebar');
+    
+    // Toggle the sliding animation
     sidebar.classList.toggle('translate-x-full');
 
+    // Handle visibility and pointer events to unblock the screen
     if (sidebar.classList.contains('translate-x-full')) {
-        sidebar.style.pointerEvents = 'none';
+        // When HIDDEN: Add 'invisible' and disable clicks
+        sidebar.classList.add('invisible');
+        sidebar.classList.add('pointer-events-none');
     } else {
-        sidebar.style.pointerEvents = 'auto';
+        // When SHOWN: Remove 'invisible' and enable clicks
+        sidebar.classList.remove('invisible');
+        sidebar.classList.remove('pointer-events-none');
     }
 }
 
